@@ -3,10 +3,20 @@ use tokio::sync::{Semaphore};
 use std::sync::Arc;
 
 use crate::connection::Connection;
+use crate::db::{Db, DbDropGuard};
 
 // The Listener struct is responsible for managing the TCP listener and the connection limit.
 // It encapsulates the TcpListener and the maximum number of concurrent connections allowed.
 pub struct Listener {
+    /// Shared database handle.
+    ///
+    /// Contains the key / value store as well as the broadcast channels for
+    /// pub/sub.
+    ///
+    /// This holds a wrapper around an `Arc`. The internal `Db` can be
+    /// retrieved and passed into the per connection state (`Handler`).
+    db_holder: DbDropGuard,
+    
     // TCP listener that will accept incoming connections.
     listener: TcpListener,
 
@@ -31,6 +41,13 @@ const STRING_CONNECTION: &str = "127.0.0.1:6379";
 const MAX_CONNECTIONS: usize = 250;
 
 struct Handler {
+    /// Shared database handle.
+    ///
+    /// When a command is received from `connection`, it is applied with `db`.
+    /// The implementation of the command is in the `cmd` module. Each command
+    /// will need to interact with `db` in order to complete the work.
+    db: Db,
+    
     /// The TCP connection decorated with the redis protocol encoder / decoder
     /// implemented using a buffered `TcpStream`.
     ///
@@ -49,6 +66,7 @@ pub async fn run() -> std::io::Result<Listener> {
     // a receiver is needed, the subscribe() method on the sender is used to create
     // one.
     let listener: Listener = Listener {
+        db_holder: DbDropGuard::new(),
         listener: TcpListener::bind(STRING_CONNECTION).await?,
         limit_connections: Arc::new(Semaphore::new(MAX_CONNECTIONS)),
     };
@@ -72,7 +90,7 @@ pub async fn run() -> std::io::Result<Listener> {
         },
     }
     println!("Listening on {}", server.listener.local_addr()?);
-    Ok(Listener { listener: server.listener, limit_connections: server.limit_connections })
+    Ok(Listener { listener: server.listener, limit_connections: server.limit_connections, db_holder: server.db_holder })
 }
 
 // The Listener struct has an associated function `server` that creates a new instance of Listener.
@@ -99,6 +117,11 @@ impl Listener {
             let (socket, _) = self.listener.accept().await?;
 
             let mut handler = Handler {
+                // Get a handle to the shared database.
+                db: self.db_holder.db(),
+
+                // Initialize the connection state. This allocates read/write
+                // buffers to perform redis protocol frame parsing.
                 connection: Connection::new(socket),
             };
 
@@ -126,14 +149,14 @@ impl Handler {
     pub async fn run(&mut self) -> Result<()> {
         // Handle the connection here. For example, you could read from the socket, process commands, and write responses back to the client.
         loop {
-            match self.connection.read_message().await? {
+            match self.connection.read_frame().await? {
                 Some(message) => {
                     println!("socket request received with message: {}", message.trim());
 
                     // Aquí puedes parsear el mensaje Redis/RESP
                     // y devolver una respuesta apropiada.
                     let response = b"+OK\r\n";
-                    self.connection.write_response(response).await?;
+                    self.connection.write(response).await?;
                 }
                 None => {
                     println!("socket closed by peer");

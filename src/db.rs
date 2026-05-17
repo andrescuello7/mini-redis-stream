@@ -11,12 +11,14 @@ pub struct DbDropGuard {
     db: Db,
 }
 
+#[derive(Debug, Clone)]
 pub struct Db {
     /// Handle to shared state. The background task will also have an
     /// `Arc<Shared>`.
     shared: Arc<Shared>,
 }
 
+#[derive(Debug)]
 struct Shared {
     /// The shared state is guarded by a mutex. This is a `std::sync::Mutex` and
     /// not a Tokio mutex. This is because there are no asynchronous operations
@@ -30,14 +32,43 @@ struct Shared {
     /// operations), then the entire operation, including waiting for the mutex,
     /// is considered a "blocking" operation and `tokio::task::spawn_blocking`
     /// should be used.
-    // state: Mutex<State>,
+    state: Mutex<State>,
 
     /// Notifies the background task handling entry expiration. The background
     /// task waits on this to be notified, then checks for expired values or the
     /// shutdown signal.
     background_task: Notify,
 }
+#[derive(Debug)]
+struct State {
+    /// The key-value data. We are not trying to do anything fancy so a
+    /// `std::collections::HashMap` works fine.
+    entries: HashMap<String, Entry>,
 
+    /// The pub/sub key-space. Redis uses a **separate** key space for key-value
+    /// and pub/sub. `this-redis` handles this by using a separate `HashMap`.
+    pub_sub: HashMap<String, broadcast::Sender<Bytes>>,
+
+    /// Tracks key TTLs.
+    ///
+    /// A `BTreeSet` is used to maintain expirations sorted by when they expire.
+    /// This allows the background task to iterate this map to find the value
+    /// expiring next.
+    ///
+    /// While highly unlikely, it is possible for more than one expiration to be
+    /// created for the same instant. Because of this, the `Instant` is
+    /// insufficient for the key. A unique key (`String`) is used to
+    /// break these ties.
+    expirations: BTreeSet<(Instant, String)>,
+
+    /// True when the Db instance is shutting down. This happens when all `Db`
+    /// values drop. Setting this to `true` signals to the background task to
+    /// exit.
+    shutdown: bool,
+}
+
+/// Entry in the key-value store
+#[derive(Debug)]
 struct Entry {
     /// Stored data
     data: Bytes,
@@ -48,8 +79,16 @@ struct Entry {
 }
 
 impl DbDropGuard {
+    /// Create a new `DbDropGuard`, wrapping a `Db` instance. When this is dropped
+    /// the `Db`'s purge task will be shut down.
     pub fn new() -> Self {
         DbDropGuard { db: Db::new() }
+    }
+
+    /// Get the shared database. Internally, this is an
+    /// `Arc`, so a clone only increments the ref count.
+    pub(crate) fn db(&self) -> Db {
+        self.db.clone()
     }
 }
 
@@ -57,11 +96,72 @@ impl Db {
     pub fn new() -> Self {
         let shared = Arc::new(Shared {
             background_task: Notify::new(),
+            state: Mutex::new(State {
+                entries: HashMap::new(),
+                pub_sub: HashMap::new(),
+                expirations: BTreeSet::new(),
+                shutdown: false,
+            }),
         });
 
         // Start the background task.
         // tokio::spawn(purge_expired_tasks(shared.clone()));
 
         Db { shared }
+    }
+    
+    /// Get the value associated with a key.
+    ///
+    /// Returns `None` if there is no value associated with the key. This may be
+    /// due to never having assigned a value to the key or a previously assigned
+    /// value expired.
+    pub(crate) fn get(&self, key: &str) -> Option<Bytes> {
+        // Acquire the lock, get the entry and clone the value.
+        // Because data is stored using `Bytes`, a clone here is a shallow
+        // clone. Data is not copied.
+        let state = self.shared.state.lock().unwrap();
+        state.entries.get(key).map(|entry| entry.data.clone())
+    }
+
+    /// Set the value associated with a key along with an optional expiration
+    /// Duration.
+    ///
+    /// If a value is already associated with the key, it is removed.
+    pub(crate) fn set(&self, key: String, value: Bytes, expire: Option<Duration>) {
+        let mut state = self.shared.state.lock().unwrap();
+        let mut notify = false;
+
+        let expires_at = expire.map(|duration| {
+            // `Instant` at which the key expires.
+            let when = Instant::now() + duration;
+
+            // Only notify the worker task if the newly inserted expiration is the
+            // **next** key to evict. In this case, the worker needs to be woken up
+            // to update its state.
+            notify = state
+                .next_expiration()
+                .map(|expiration| expiration > when)
+                .unwrap_or(true);
+
+            when
+        });
+         
+        // Insert the entry into the `HashMap`.
+        let prev = state.entries.insert(
+            key.clone(),
+            Entry {
+                data: value,
+                expires_at,
+            },
+        );
+    }
+}
+
+impl State {
+    fn next_expiration(&self) -> Option<Instant> {
+        self.expirations
+            .iter()
+            .next()
+            .map(|expiration| expiration.0)
     }
 }
