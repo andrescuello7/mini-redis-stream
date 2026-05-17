@@ -1,6 +1,5 @@
 use tokio::net::TcpListener;
 use tokio::sync::{Semaphore};
-use tracing::{error, info}; // low level implementation
 use std::sync::Arc;
 
 use crate::connection::Connection;
@@ -68,7 +67,7 @@ pub async fn run() -> std::io::Result<Listener> {
             // Errors encountered when handling individual connections do not
             // bubble up to this point.
             if let Err(err) = res {
-                error!(cause = %err, "failed to accept");
+                println!("failed to accept connections: {}", err);
             }
         },
     }
@@ -85,7 +84,7 @@ impl Listener {
     
     // The `server` function takes an address and a connection limit as parameters, binds a TcpListener to the specified address, and returns a new Listener instance.
     pub async fn run(&mut self) -> Result<Vec<u8>> {
-        info!("accepting inbound connections");
+        println!("accepting inbound connections");
 
         loop {
             // Acquire a permit from the semaphore before accepting a new connection.
@@ -106,7 +105,7 @@ impl Listener {
             // Spawn a new task to handle the connection. The permit is moved into the task, and will be automatically released when the task completes.
             tokio::spawn(async move {
                 if let Err(err) = handler.run().await {
-                    error!(cause = ?err, "connection error");
+                    println!("connection error : {}", err);
                 }
                 // Handle the connection here. For example, you could read from the socket, process commands, and write responses back to the client.
                 // The permit will be automatically released when this task completes, allowing another connection to be accepted.
@@ -126,6 +125,23 @@ impl Handler {
     /// it reaches a safe state, at which point it is terminated.
     pub async fn run(&mut self) -> Result<()> {
         // Handle the connection here. For example, you could read from the socket, process commands, and write responses back to the client.
+        loop {
+            match self.connection.read_message().await? {
+                Some(message) => {
+                    println!("socket request received with message: {}", message.trim());
+
+                    // Aquí puedes parsear el mensaje Redis/RESP
+                    // y devolver una respuesta apropiada.
+                    let response = b"+OK\r\n";
+                    self.connection.write_response(response).await?;
+                }
+                None => {
+                    println!("socket closed by peer");
+                    break;
+                }
+            }
+        }
+        
         Ok(())
     }
 }

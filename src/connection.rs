@@ -1,5 +1,5 @@
 use bytes::{BytesMut};
-use tokio::io::{BufWriter};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::TcpStream;
 
 pub struct Connection {
@@ -7,7 +7,7 @@ pub struct Connection {
     // level buffering. The `BufWriter` implementation provided by Tokio is
     // sufficient for our needs.
     stream: BufWriter<TcpStream>,
-
+    
     // The buffer for reading frames.
     buffer: BytesMut,
 }
@@ -16,6 +16,8 @@ impl Connection {
     /// Create a new `Connection`, backed by `socket`. Read and write buffers
     /// are initialized.
     pub fn new(socket: TcpStream) -> Connection {
+        println!("[+] New connection from {}", socket.peer_addr().unwrap());
+
         Connection {
             stream: BufWriter::new(socket),
             // The buffer is initialized with a capacity of 4 KB. 
@@ -23,5 +25,24 @@ impl Connection {
             // The `BytesMut` type is a mutable byte buffer that can grow as needed.
             buffer: BytesMut::with_capacity(4 * 1024),
         }
+    }
+
+    pub async fn read_message(&mut self) -> std::io::Result<Option<String>> {
+        let mut line = String::new();
+
+        let mut reader = BufReader::new(&mut self.stream);
+        let bytes = reader.read_line(&mut line).await?;
+        println!("Received message: {}", line.trim());
+        if bytes == 0 {
+            return Ok(None);
+        }
+
+        Ok(Some(line))
+    }
+
+    pub async fn write_response(&mut self, response: &[u8]) -> std::io::Result<()> {
+        self.stream.write_all(response).await?;
+        self.stream.flush().await?;
+        Ok(())
     }
 }
