@@ -103,6 +103,9 @@ impl Db {
                 shutdown: false,
             }),
         });
+        print!("Starting background task...");
+        println!("background_task: {:?}", shared.background_task);
+        println!("state: {:?}", shared.state);
 
         // Start the background task.
         // tokio::spawn(purge_expired_tasks(shared.clone()));

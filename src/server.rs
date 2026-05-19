@@ -2,6 +2,7 @@ use tokio::net::TcpListener;
 use tokio::sync::{Semaphore};
 use std::sync::Arc;
 
+use crate::cmd::Command;
 use crate::connection::Connection;
 use crate::db::{Db, DbDropGuard};
 
@@ -149,20 +150,22 @@ impl Handler {
     pub async fn run(&mut self) -> Result<()> {
         // Handle the connection here. For example, you could read from the socket, process commands, and write responses back to the client.
         loop {
-            match self.connection.read_frame().await? {
+            let frame = match self.connection.read_frame().await? {
                 Some(message) => {
                     println!("socket request received with message: {}", message.trim());
-
-                    // Aquí puedes parsear el mensaje Redis/RESP
-                    // y devolver una respuesta apropiada.
                     let response = b"+OK\r\n";
                     self.connection.write(response).await?;
                 }
                 None => {
-                    println!("socket closed by peer");
+                    println!("Err: read the frame socket closed by peer");
                     break;
                 }
-            }
+            };
+
+            // Convert the redis frame into a command struct. This returns an
+            // error if the frame is not a valid redis command or it is an
+            // unsupported command.
+            let cmd = Command::from_frame(frame)?;
         }
         
         Ok(())
