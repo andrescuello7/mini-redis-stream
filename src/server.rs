@@ -147,28 +147,21 @@ impl Handler {
     ///
     /// When the shutdown signal is received, the connection is processed until
     /// it reaches a safe state, at which point it is terminated.
-    pub async fn run(&mut self) -> Result<()> {
-        // Handle the connection here. For example, you could read from the socket, process commands, and write responses back to the client.
+    pub async fn run(&mut self) -> std::io::Result<Option<String>> {
         loop {
-            let frame = match self.connection.read_frame().await? {
-                Some(message) => {
-                    println!("socket request received with message: {}", message.trim());
-                    let response = b"+OK\r\n";
-                    self.connection.write(response).await?;
-                }
-                None => {
-                    println!("Err: read the frame socket closed by peer");
-                    break;
-                }
-            };
+            if let Some(message) = self.connection.read_frame().await? {
+                let frame = message.trim().to_string();
+                let cmd = Command::from_frame(frame);
 
-            // Convert the redis frame into a command struct. This returns an
-            // error if the frame is not a valid redis command or it is an
-            // unsupported command.
-            let cmd = Command::from_frame(frame)?;
+                // TODO i18n: parse the message into a command and execute it against the database.
+                // let response = cmd.unwrap_or_else(|err| format!("Error: {}", err));
+                // self.connection.write(response.as_bytes()).await?;
+                // return Ok(Some(message));
+            } else {
+                println!("Err: read the frame socket closed by peer");
+                return Ok(None);
+            }
         }
-        
-        Ok(())
     }
 }
 

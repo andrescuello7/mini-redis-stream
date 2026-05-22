@@ -3,6 +3,7 @@ mod connection;
 mod db;
 mod parse;
 mod cmd;
+mod frame;
 use server::run;
 
 // This is Redis STM, a simple implementation of a Redis server using Rust and Tokio.

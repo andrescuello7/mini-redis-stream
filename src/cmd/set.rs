@@ -56,9 +56,8 @@ impl Set {
     }
 
     pub fn parse_frames(parse: &mut Parse) -> std::result::Result<Set, parse::ParseError> {
-        let key = parse.next_string()?;
-        let value = parse.next_bytes()?;
-        // let expire = parse.next_expire()?;
-        Ok(Set::new(key, value, None))
+        // let key = parse.next_string()?;
+        println!("Parsing SET command with parse: {:?}", parse);
+        Ok(Set::new("key", Bytes::from("value"), None))
     }
 }

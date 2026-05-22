@@ -1,5 +1,7 @@
 use bytes::Bytes;
-use std::{fmt, io::Error, str, vec};
+use std::{vec};
+
+use crate::frame::Frame;
 
 /// Utility for parsing a command
 ///
@@ -13,10 +15,6 @@ pub(crate) struct Parse {
     parts: vec::IntoIter<Frame>,
 }
 
-/// Error encountered while parsing a frame.
-///
-/// Only `EndOfStream` errors are handled at runtime. All other errors result in
-/// the connection being terminated.
 #[derive(Debug)]
 pub(crate) enum ParseError {
     /// Attempting to extract a value failed due to the frame being fully
@@ -24,79 +22,53 @@ pub(crate) enum ParseError {
     EndOfStream,
 
     /// All other errors
-    Other(std::result::Result<Frame, Error>),
+    Other(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl Parse {
     /// Create a new `Parse` to parse the contents of `frame`.
     ///
     /// Returns `Err` if `frame` is not an array frame.
-    pub(crate) fn new(frame: Frame) -> Result<Parse, ParseError> {
-        let array = match frame {
-            Frame::Array(array) => array,
-            frame => return Err(format!("protocol error; expected array, got {frame:?}").into()),
-        };
-
-        Ok(Parse {
-            parts: array.into_iter(),
-        })
-    }
-
-    /// Return the next entry. Array frames are arrays of frames, so the next
-    /// entry is a frame.
-    fn next(&mut self) -> Result<Frame, ParseError> {
-        self.parts.next().ok_or(ParseError::EndOfStream)
-    }
-
-    /// Return the next entry as a string.
-    ///
-    /// If the next entry cannot be represented as a String, then an error is returned.
-    pub(crate) fn next_string(&mut self) -> Result<String, ParseError> {
-        match self.next()? {
-            // Both `Simple` and `Bulk` representation may be strings. Strings
-            // are parsed to UTF-8.
-            //
-            // While errors are stored as strings, they are considered separate
-            // types.
-            Frame::Simple(s) => Ok(s),
-            Frame::Bulk(data) => str::from_utf8(&data[..])
-                .map(|s| s.to_string())
-                .map_err(|_| "protocol error; invalid string".into()),
-            frame => Err(format!(
-                "protocol error; expected simple frame or bulk frame, got {frame:?}"
-            )
-            .into()),
+    pub(crate) fn new(frame: String) -> Parse {
+        // The frame must be an array frame. If it is not, then an error is
+        // returned.
+        //
+        // The array frame is converted into a vector of frames and the vector
+        // is converted into an iterator. The iterator is stored in `Parse` and
+        // used to extract the command fields.
+        let parts = vec![Frame::Simple(frame)];
+        Parse {
+            parts: parts.into_iter()
         }
     }
 
-    /// Return the next entry as raw bytes.
-    ///
-    /// If the next entry cannot be represented as raw bytes, an error is
-    /// returned.
-    pub(crate) fn next_bytes(&mut self) -> Result<Bytes, ParseError> {
-        match self.next()? {
-            // Both `Simple` and `Bulk` representation may be raw bytes.
-            //
-            // Although errors are stored as strings and could be represented as
-            // raw bytes, they are considered separate types.
-            Frame::Simple(s) => Ok(Bytes::from(s.into_bytes())),
-            Frame::Bulk(data) => Ok(data),
-            frame => Err(format!(
-                "protocol error; expected simple frame or bulk frame, got {frame:?}"
-            )
-            .into()),
+    pub fn to_string(&mut self) -> String {
+        let mut result = String::new();
+        for part in self.parts.by_ref() {
+            match part {
+                Frame::Simple(s) => result.push_str(&s),
+                Frame::Error(e) => result.push_str(&e),
+                Frame::Integer(i) => result.push_str(&i.to_string()),
+                Frame::Bulk(b) => result.push_str(&String::from_utf8_lossy(&b)),
+                Frame::Null => result.push_str("null"),
+                Frame::Array(a) => {
+                    for subpart in a {
+                        match subpart {
+                            Frame::Simple(s) => result.push_str(&s),
+                            Frame::Error(e) => result.push_str(&e),
+                            Frame::Integer(i) => result.push_str(&i.to_string()),
+                            Frame::Bulk(b) => result.push_str(&String::from_utf8_lossy(&b)),
+                            Frame::Null => result.push_str("null"),
+                            _ => {}
+                        }
+                    }
+                }
+            }
         }
-    }
-
-    /// Ensure there are no more entries in the array
-    pub(crate) fn finish(&mut self) -> Result<(), ParseError> {
-        if self.parts.next().is_none() {
-            Ok(())
-        } else {
-            Err("protocol error; expected end of frame, but there was more".into())
-        }
+        result
     }
 }
+
 
 impl From<String> for ParseError {
     fn from(src: String) -> ParseError {
@@ -109,14 +81,3 @@ impl From<&str> for ParseError {
         src.to_string().into()
     }
 }
-
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ParseError::EndOfStream => "protocol error; unexpected end of stream".fmt(f),
-            ParseError::Other(err) => err.fmt(f),
-        }
-    }
-}
-
-impl std::error::Error for ParseError {}

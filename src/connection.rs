@@ -1,4 +1,4 @@
-use bytes::{Buf, BytesMut};
+use bytes::{BytesMut};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::TcpStream;
 
@@ -28,15 +28,6 @@ impl Connection {
     }
 
     pub async fn read_frame(&mut self) -> std::io::Result<Option<String>> {
-        // if 0 == self.stream.read_buf(&mut self.buffer).await? {
-        //     // The remote closed the connection. For this to be a clean
-        //     // shutdown, there should be no data in the read buffer. If
-        //     // there is, this means that the peer closed the socket while
-        //     // sending a frame.
-        //     if self.buffer.is_empty() {
-        //         return Ok(None);
-        //     }
-        // }
         let mut line = String::new();
         let mut reader = BufReader::new(&mut self.stream);
         let bytes = reader.read_line(&mut line).await?;

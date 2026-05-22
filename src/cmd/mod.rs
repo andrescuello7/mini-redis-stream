@@ -3,11 +3,11 @@ use std::io::Error;
 
 pub use get::Get;
 
-mod publish;
-pub use publish::Publish;
-
 mod set;
 pub use set::Set;
+
+mod publish;
+pub use publish::Publish;
 
 mod subscribe;
 pub use subscribe::{Subscribe, Unsubscribe};
@@ -20,10 +20,10 @@ use crate::parse::{self, Parse};
 #[derive(Debug)]
 pub enum Command {
     Get(Get),
-    Publish(Publish),
     Set(Set),
+    Publish(Publish),
     Subscribe(Subscribe),
-    Unsubscribe(Unsubscribe),
+    // Unsubscribe(Unsubscribe),
 }
 
 impl Command {
@@ -35,23 +35,26 @@ impl Command {
     /// # Returns
     ///
     /// On success, the command value is returned, otherwise, `Err` is returned.
-    pub fn from_frame(frame: ()) -> std::result::Result<Command, parse::ParseError> {
+    pub fn from_frame(frame: String) -> std::result::Result<Command, parse::ParseError> {
         // The frame value is decorated with `Parse`. `Parse` provides a
         // "cursor" like API which makes parsing the command easier.
         //
         // The frame value must be an array variant. Any other frame variants
         // result in an error being returned.
-        let mut parse = Parse::new(frame)?;
+        let mut parse = Parse::new(frame);
+        // println!("Received frame desde COMMAND: {:?}", parse);
 
         // All redis commands begin with the command name as a string. The name
         // is read and converted to lower cases in order to do case sensitive
         // matching.
-        let command_name = parse.next_string()?.to_lowercase();
+        let binding = String::from("value");
+        let mut parts = binding.split_whitespace();
+        let command_name = parts.next().ok_or("empty command")?;
         
-        let command = match &command_name[..] {
+        let command: Command = match command_name.to_lowercase().as_str() {
             "get" => Command::Get(Get::parse_frames(&mut parse)?),
-            "publish" => Command::Publish(Publish::parse_frames(&mut parse)?),
             "set" => Command::Set(Set::parse_frames(&mut parse)?),
+            "publish" => Command::Publish(Publish::parse_frames(&mut parse)?),
             "subscribe" => Command::Subscribe(Subscribe::parse_frames(&mut parse)?),
             _ => {
                 // The command is not recognized and an Unknown command is

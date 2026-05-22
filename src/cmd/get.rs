@@ -20,7 +20,8 @@ impl Get {
     }
 
     pub fn parse_frames(parse: &mut Parse) -> std::result::Result<Get, parse::ParseError> {
-        let key = parse.next_string()?;
-        Ok(Get::new(key))
+        // let key = parse.next_string()?;
+        println!("Parsing GET command with parse: {:?}", parse);
+        Ok(Get::new("key"))
     }
 }

@@ -36,10 +36,11 @@ impl Subscribe {
     }
     
     pub fn parse_frames(parse: &mut Parse) -> std::result::Result<Subscribe, parse::ParseError> {
-        let mut channels = Vec::new();
-        while let Ok(channel) = parse.next_string() {
-            channels.push(channel);
-        }
+        println!("Parsing SUBSCRIBE command with parse: {:?}", parse);
+        let channels = Vec::new();
+        // while let Ok(channel) = parse.next_string() {
+        //     channels.push(channel);
+        // }
         Ok(Subscribe::new(channels))
     }
 }
