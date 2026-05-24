@@ -41,13 +41,13 @@ impl Command {
         //
         // The frame value must be an array variant. Any other frame variants
         // result in an error being returned.
+        // println!("$ {:?}", frame);
         let mut parse = Parse::new(frame);
-        // println!("Received frame desde COMMAND: {:?}", parse);
 
         // All redis commands begin with the command name as a string. The name
         // is read and converted to lower cases in order to do case sensitive
         // matching.
-        let binding = String::from("value");
+        let binding = String::from("parse");
         let mut parts = binding.split_whitespace();
         let command_name = parts.next().ok_or("empty command")?;
         
@@ -56,21 +56,10 @@ impl Command {
             "set" => Command::Set(Set::parse_frames(&mut parse)?),
             "publish" => Command::Publish(Publish::parse_frames(&mut parse)?),
             "subscribe" => Command::Subscribe(Subscribe::parse_frames(&mut parse)?),
-            _ => {
-                // The command is not recognized and an Unknown command is
-                // returned.
-                //
-                // `return` is called here to skip the `finish()` call below. As
-                // the command is not recognized, there is most likely
-                // unconsumed fields remaining in the `Parse` instance.
-                // return Ok(Command::Unknown(Unknown::new(command_name)));
-                return Err(format!("unknown command {command_name}").into());
-            }
+            _ => return Err(format!("unknown command {command_name}").into()),
         };
 
         // The command has been successfully parsed
         Ok(command)
     }
 }
-
-pub type Result<T> = std::result::Result<T, Error>;

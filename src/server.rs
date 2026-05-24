@@ -149,14 +149,13 @@ impl Handler {
     /// it reaches a safe state, at which point it is terminated.
     pub async fn run(&mut self) -> std::io::Result<Option<String>> {
         loop {
-            if let Some(message) = self.connection.read_frame().await? {
-                let frame = message.trim().to_string();
-                let cmd = Command::from_frame(frame);
+            if let Some(_) = self.connection.read_frame().await? {
+                let _ = Command::from_frame("frame".to_string());
 
-                // TODO i18n: parse the message into a command and execute it against the database.
+                // TODO i18n: parse the frame into a command and execute it against the database.
                 // let response = cmd.unwrap_or_else(|err| format!("Error: {}", err));
                 // self.connection.write(response.as_bytes()).await?;
-                // return Ok(Some(message));
+                // return Ok(Some(frame));
             } else {
                 println!("Err: read the frame socket closed by peer");
                 return Ok(None);

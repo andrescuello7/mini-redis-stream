@@ -1,6 +1,8 @@
 use bytes::{BytesMut};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::TcpStream;
+
+use crate::frame::Frame;
 
 pub struct Connection {
     // The `TcpStream`. It is decorated with a `BufWriter`, which provides write
@@ -27,17 +29,20 @@ impl Connection {
         }
     }
 
-    pub async fn read_frame(&mut self) -> std::io::Result<Option<String>> {
-        let mut line = String::new();
-        let mut reader = BufReader::new(&mut self.stream);
-        let bytes = reader.read_line(&mut line).await?;
 
-        println!("Received message: {}", line.trim());
+    pub async fn read_frame(&mut self) -> std::io::Result<Option<Frame>> {
+        let mut buffer = [0u8; 1024];
+        let bytes = self.stream.read(&mut buffer).await?;
 
         if bytes == 0 {
             return Ok(None);
         }
-        Ok(Some(line))
+
+        // let message = String::from_utf8_lossy(&buffer[..bytes]).to_string();
+        let buffer = BytesMut::from(&buffer[..bytes]);
+        let frame = Frame::parse_frame(buffer)?;
+        println!("Received frame: {:?}", frame);
+        Ok(Some(frame))
     }
 
     pub async fn write(&mut self, response: &[u8]) -> std::io::Result<()> {
