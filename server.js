@@ -30,17 +30,10 @@ const rl = readline.createInterface({
 
 function encodeRESP(input) {
   const parts = input.trim().split(' ');
-
   let resp = `*${parts.length}\r\n`;
-  // get -> b"*2\r\n$3\r\nget\r\n$3\r\nfoo\r\n"
-  // get -> b"*2\r\n$3\r\nget\r\n$3\r\nfoo\r\n"
-
-  // set -> b"*3\r\n$3\r\nset\r\n$5\r\nhello\r\n$5\r\nworld\r\n"
-  // set -> b"*3\r\n$3\r\nhello\r\n$5\r\nworld\r\n"
-  
-  resp += `$3\r\nset$3\r\n`; // Command is always 3 bytes for simplicity
+  resp += `$3\r\nset\r\n`;
   for (const part of parts) {
-    // resp += `$${Buffer.byteLength(part)}\r\n`;
+    resp += `$${Buffer.byteLength(part)}\r\n`;
     resp += `${part}\r\n`;
   }
 

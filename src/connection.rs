@@ -29,19 +29,16 @@ impl Connection {
         }
     }
 
-
     pub async fn read_frame(&mut self) -> std::io::Result<Option<Frame>> {
-        let mut buffer = [0u8; 1024];
-        let bytes = self.stream.read(&mut buffer).await?;
+        let mut buffer: [u8; 1024] = [0u8; 1024];
+        let bytes: usize = self.stream.read(&mut buffer).await?;
 
         if bytes == 0 {
             return Ok(None);
         }
 
-        // let message = String::from_utf8_lossy(&buffer[..bytes]).to_string();
-        let buffer = BytesMut::from(&buffer[..bytes]);
-        let frame = Frame::parse_frame(buffer)?;
-        println!("Received frame: {:?}", frame);
+        let buffer: BytesMut = BytesMut::from(&buffer[..bytes]);
+        let frame: Frame = Frame::parse_frame(buffer)?;
         Ok(Some(frame))
     }
 

@@ -76,9 +76,11 @@ impl Frame {
             Ok(b'$') => {
                 if b'-' == peek_u8(src)? {
                     let line = get_line(src)?;
-                    // if line != b"-1" {
-                    //     return Err("protocol error; invalid frame format".into());
-                    // }
+                    if line != b"-1" {
+                        return Err(Error::Other(
+                            format!("unsupported frame type: {:?}", line).into(),
+                        ))
+                    }
                     Ok(())
                 } else {
                     // Read the bulk string
@@ -98,9 +100,7 @@ impl Frame {
 
                 Ok(())
             }
-            actual => Err(Error::Other(
-                format!("unsupported frame type: {:?}", actual).into(),
-            )),
+            _ => unimplemented!(),
         }
     }
 

@@ -29,16 +29,41 @@ impl Parse {
     /// Create a new `Parse` to parse the contents of `frame`.
     ///
     /// Returns `Err` if `frame` is not an array frame.
-    pub(crate) fn new(frame: String) -> Parse {
-        // The frame must be an array frame. If it is not, then an error is
-        // returned.
-        //
-        // The array frame is converted into a vector of frames and the vector
-        // is converted into an iterator. The iterator is stored in `Parse` and
-        // used to extract the command fields.
-        let parts = vec![Frame::Simple(frame)];
-        Parse {
-            parts: parts.into_iter()
+    pub(crate) fn new(frame: Frame) -> Result<Parse, ParseError> {
+        let array = match frame {
+            Frame::Array(array) => array,
+            frame => return Err(format!("protocol error; expected array, got {frame:?}").into()),
+        };
+
+        Ok(Parse {
+            parts: array.into_iter(),
+        })
+    }
+
+    /// Return the next entry. Array frames are arrays of frames, so the next
+    /// entry is a frame.
+    fn next(&mut self) -> Result<Frame, ParseError> {
+        self.parts.next().ok_or(ParseError::EndOfStream)
+    }
+
+    /// Return the next entry as a string.
+    ///
+    /// If the next entry cannot be represented as a String, then an error is returned.
+    pub(crate) fn next_string(&mut self) -> Result<String, ParseError> {
+        match self.next()? {
+            // Both `Simple` and `Bulk` representation may be strings. Strings
+            // are parsed to UTF-8.
+            //
+            // While errors are stored as strings, they are considered separate
+            // types.
+            Frame::Simple(s) => Ok(s),
+            Frame::Bulk(data) => str::from_utf8(&data[..])
+                .map(|s| s.to_string())
+                .map_err(|_| "protocol error; invalid string".into()),
+            frame => Err(format!(
+                "protocol error; expected simple frame or bulk frame, got {frame:?}"
+            )
+            .into()),
         }
     }
 

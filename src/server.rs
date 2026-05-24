@@ -149,8 +149,8 @@ impl Handler {
     /// it reaches a safe state, at which point it is terminated.
     pub async fn run(&mut self) -> std::io::Result<Option<String>> {
         loop {
-            if let Some(_) = self.connection.read_frame().await? {
-                let _ = Command::from_frame("frame".to_string());
+            if let Some(frame) = self.connection.read_frame().await? {
+                let _ = Command::from_frame(frame);
 
                 // TODO i18n: parse the frame into a command and execute it against the database.
                 // let response = cmd.unwrap_or_else(|err| format!("Error: {}", err));

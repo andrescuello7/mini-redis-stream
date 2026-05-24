@@ -12,7 +12,7 @@ pub use publish::Publish;
 mod subscribe;
 pub use subscribe::{Subscribe, Unsubscribe};
 
-use crate::parse::{self, Parse};
+use crate::{frame::Frame, parse::{self, Parse}};
 
 /// Enumeration of supported Redis commands.
 ///
@@ -35,21 +35,15 @@ impl Command {
     /// # Returns
     ///
     /// On success, the command value is returned, otherwise, `Err` is returned.
-    pub fn from_frame(frame: String) -> std::result::Result<Command, parse::ParseError> {
+    pub fn from_frame(frame: Frame) -> std::result::Result<Command, parse::ParseError> {
         // The frame value is decorated with `Parse`. `Parse` provides a
         // "cursor" like API which makes parsing the command easier.
         //
         // The frame value must be an array variant. Any other frame variants
         // result in an error being returned.
-        // println!("$ {:?}", frame);
-        let mut parse = Parse::new(frame);
-
-        // All redis commands begin with the command name as a string. The name
-        // is read and converted to lower cases in order to do case sensitive
-        // matching.
-        let binding = String::from("parse");
-        let mut parts = binding.split_whitespace();
-        let command_name = parts.next().ok_or("empty command")?;
+        println!("$ {:?}", frame);
+        let mut parse = Parse::new(frame)?;
+        let command_name = parse.next_string()?.to_lowercase();
         
         let command: Command = match command_name.to_lowercase().as_str() {
             "get" => Command::Get(Get::parse_frames(&mut parse)?),
