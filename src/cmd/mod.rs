@@ -1,5 +1,4 @@
 mod get;
-use std::io::Error;
 
 pub use get::Get;
 
@@ -10,7 +9,7 @@ mod publish;
 pub use publish::Publish;
 
 mod subscribe;
-pub use subscribe::{Subscribe, Unsubscribe};
+pub use subscribe::{Subscribe};
 
 use crate::{frame::Frame, parse::{self, Parse}};
 

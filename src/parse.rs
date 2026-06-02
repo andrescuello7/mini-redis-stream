@@ -1,6 +1,6 @@
-use bytes::Bytes;
 use std::{vec};
 
+use bytes::Bytes;
 use crate::frame::Frame;
 
 /// Utility for parsing a command
@@ -46,9 +46,17 @@ impl Parse {
         self.parts.next().ok_or(ParseError::EndOfStream)
     }
 
-    /// Return the next entry as a string.
-    ///
-    /// If the next entry cannot be represented as a String, then an error is returned.
+    pub(crate) fn next_bytes(&mut self) -> Result<Bytes, ParseError> {
+        match self.next()? {
+            Frame::Bulk(data) => Ok(data),
+            Frame::Simple(s) => Ok(Bytes::from(s.into_bytes())),
+            frame => Err(format!(
+                "protocol error; expected bulk frame, got {frame:?}"
+            )
+            .into()),
+        }
+    }
+
     pub(crate) fn next_string(&mut self) -> Result<String, ParseError> {
         match self.next()? {
             // Both `Simple` and `Bulk` representation may be strings. Strings
@@ -65,32 +73,6 @@ impl Parse {
             )
             .into()),
         }
-    }
-
-    pub fn to_string(&mut self) -> String {
-        let mut result = String::new();
-        for part in self.parts.by_ref() {
-            match part {
-                Frame::Simple(s) => result.push_str(&s),
-                Frame::Error(e) => result.push_str(&e),
-                Frame::Integer(i) => result.push_str(&i.to_string()),
-                Frame::Bulk(b) => result.push_str(&String::from_utf8_lossy(&b)),
-                Frame::Null => result.push_str("null"),
-                Frame::Array(a) => {
-                    for subpart in a {
-                        match subpart {
-                            Frame::Simple(s) => result.push_str(&s),
-                            Frame::Error(e) => result.push_str(&e),
-                            Frame::Integer(i) => result.push_str(&i.to_string()),
-                            Frame::Bulk(b) => result.push_str(&String::from_utf8_lossy(&b)),
-                            Frame::Null => result.push_str("null"),
-                            _ => {}
-                        }
-                    }
-                }
-            }
-        }
-        result
     }
 }
 

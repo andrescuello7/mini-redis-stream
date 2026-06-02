@@ -1,5 +1,5 @@
 use tokio::sync::{broadcast, Notify};
-use tokio::time::{self, Duration, Instant};
+use tokio::time::{Duration, Instant};
 
 use bytes::Bytes;
 use std::collections::{BTreeSet, HashMap};
@@ -132,31 +132,38 @@ impl Db {
     /// If a value is already associated with the key, it is removed.
     pub(crate) fn set(&self, key: String, value: Bytes, expire: Option<Duration>) {
         let mut state = self.shared.state.lock().unwrap();
-        let mut notify = false;
 
-        let expires_at = expire.map(|duration| {
-            // `Instant` at which the key expires.
-            let when = Instant::now() + duration;
+        let expires_at = expire.map(|duration| Instant::now() + duration);
 
-            // Only notify the worker task if the newly inserted expiration is the
-            // **next** key to evict. In this case, the worker needs to be woken up
-            // to update its state.
-            notify = state
-                .next_expiration()
-                .map(|expiration| expiration > when)
-                .unwrap_or(true);
-
-            when
-        });
-         
-        // Insert the entry into the `HashMap`.
-        let prev = state.entries.insert(
-            key.clone(),
+        state.entries.insert(
+            key,
             Entry {
                 data: value,
                 expires_at,
             },
         );
+    }
+
+    pub(crate) fn publish(&self, channel: &str, message: Bytes) -> usize {
+        let state = self.shared.state.lock().unwrap();
+        state
+            .pub_sub
+            .get(channel)
+            .map(|tx| tx.send(message).unwrap_or(0))
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn subscribe(&self, channel: String) -> tokio::sync::broadcast::Receiver<Bytes> {
+        use std::collections::hash_map::Entry;
+        let mut state = self.shared.state.lock().unwrap();
+        match state.pub_sub.entry(channel) {
+            Entry::Occupied(e) => e.get().subscribe(),
+            Entry::Vacant(e) => {
+                let (tx, rx) = tokio::sync::broadcast::channel(1024);
+                e.insert(tx);
+                rx
+            }
+        }
     }
 }
 

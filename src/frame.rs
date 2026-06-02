@@ -25,8 +25,29 @@ pub enum Frame {
 }
 
 impl Frame {
+    pub fn encode(&self) -> Vec<u8> {
+        match self {
+            Frame::Simple(s) => format!("+{}\r\n", s).into_bytes(),
+            Frame::Error(s) => format!("-{}\r\n", s).into_bytes(),
+            Frame::Integer(n) => format!(":{}\r\n", n).into_bytes(),
+            Frame::Bulk(data) => {
+                let mut out = format!("${}\r\n", data.len()).into_bytes();
+                out.extend_from_slice(data);
+                out.extend_from_slice(b"\r\n");
+                out
+            }
+            Frame::Null => b"$-1\r\n".to_vec(),
+            Frame::Array(frames) => {
+                let mut out = format!("*{}\r\n", frames.len()).into_bytes();
+                for frame in frames {
+                    out.extend(frame.encode());
+                }
+                out
+            }
+        }
+    }
+
     pub(crate) fn parse_frame(mut buffer: BytesMut) -> std::io::Result<Frame> {
-        println!("buffer: {:?}", buffer);
         let mut buf = Cursor::new(&buffer[..]);
 
         match Frame::check(&mut buf) {
@@ -52,10 +73,6 @@ impl Frame {
                 format!("failed to parse frame: {e:?}"),
             )),
         }
-    }
-    
-    pub(crate) fn array() -> Frame {
-        Frame::Array(vec![])
     }
 
     /// Checks if an entire message can be decoded from `src`

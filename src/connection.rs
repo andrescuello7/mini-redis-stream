@@ -1,5 +1,5 @@
-use bytes::{BytesMut};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
+use bytes::BytesMut;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
 use tokio::net::TcpStream;
 
 use crate::frame::Frame;
@@ -42,11 +42,8 @@ impl Connection {
         Ok(Some(frame))
     }
 
-    pub async fn write(&mut self, response: &[u8]) -> std::io::Result<()> {
-        // Arrays are encoded by encoding each entry. All other frame types are
-        // considered literals. For now, mini-redis is not able to encode
-        // recursive frame structures. See below for more details.
-        self.stream.write_all(response).await?;
+    pub async fn write_frame(&mut self, frame: &Frame) -> std::io::Result<()> {
+        self.stream.write_all(&frame.encode()).await?;
         self.stream.flush().await?;
         Ok(())
     }
